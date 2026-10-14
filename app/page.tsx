@@ -87,8 +87,8 @@ export default function Home() {
   const [customExerciseName, setCustomExerciseName] = useState("");
   const [customExerciseMuscle, setCustomExerciseMuscle] = useState("Chest");
   const [showAddExercise, setShowAddExercise] = useState(false);
-    const [showAddFood, setShowAddFood] = useState(false);
-    const [customExercises, setCustomExercises] = usePersistentState<typeof exercises[0][]>("forge-custom-exercises", []);
+  const [showAddFood, setShowAddFood] = useState(false);
+  const [customExercises, setCustomExercises] = usePersistentState<typeof exercises[0][]>("forge-custom-exercises", []);
   const [focus, setFocus] = usePersistentState("forge-focus", "Strength");
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string>("");
