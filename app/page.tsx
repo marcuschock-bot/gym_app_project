@@ -185,8 +185,6 @@ const persist = <T,>(key: string, fallback: T): T => {
   }
 };
 
-const isMongoObjectId = (value: string): boolean => /^[a-f0-9]{24}$/i.test(value);
-
 const mapApiWorkout = (session: ApiWorkout): SessionEntry => ({
   id: session.id,
   date: new Date(session.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
@@ -238,11 +236,11 @@ export default function Home() {
         const nextHistory = Array.isArray(data?.workouts) ? (data.workouts as ApiWorkout[]) : [];
         if (nextHistory.length > 0) {
           setSessionHistory(nextHistory.map(mapApiWorkout));
-          setStatusText("Loaded workout history from API.");
+          setStatusText("Loaded your local workout history.");
           setStatusTone("ok");
         }
       } catch {
-        setStatusText("Could not reach the workouts API. Showing local data.");
+        setStatusText("Could not load workout data. Showing your local data.");
         setStatusTone("warn");
       }
     };
@@ -340,38 +338,14 @@ export default function Home() {
     setStatusTone("ok");
   };
 
-  const deleteSession = async (sessionId: string) => {
-    const previous = sessionHistory;
+  const deleteSession = (sessionId: string) => {
     setSessionHistory((current) => current.filter((session) => session.id !== sessionId));
 
-    if (!isMongoObjectId(sessionId)) {
-      if (editingSessionId === sessionId) {
-        resetEditor();
-      }
-      setStatusText("Removed local session.");
-      setStatusTone("ok");
-      return;
+    if (editingSessionId === sessionId) {
+      resetEditor();
     }
-
-    try {
-      const response = await fetch(`/api/workouts/${sessionId}`, { method: "DELETE" });
-      if (!response.ok) {
-        setSessionHistory(previous);
-        setStatusText("Could not delete session from API.");
-        setStatusTone("warn");
-        return;
-      }
-
-      if (editingSessionId === sessionId) {
-        resetEditor();
-      }
-      setStatusText("Session deleted.");
-      setStatusTone("ok");
-    } catch {
-      setSessionHistory(previous);
-      setStatusText("Delete failed due to a network issue.");
-      setStatusTone("warn");
-    }
+    setStatusText("Removed local session.");
+    setStatusTone("ok");
   };
 
   const saveWorkout = async () => {
@@ -403,13 +377,8 @@ export default function Home() {
     setIsSaving(true);
 
     try {
-      const endpoint = editingSessionId && isMongoObjectId(editingSessionId)
-        ? `/api/workouts/${editingSessionId}`
-        : "/api/workouts";
-      const method = editingSessionId && isMongoObjectId(editingSessionId) ? "PATCH" : "POST";
-
-      const response = await fetch(endpoint, {
-        method,
+      const response = await fetch("/api/workouts", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
@@ -723,4 +692,3 @@ export default function Home() {
     </main>
   );
 }
-
