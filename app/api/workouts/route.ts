@@ -63,21 +63,25 @@ const normalizeSets = (setsInput: unknown): WorkoutSet[] => {
 };
 
 export async function GET() {
-  const client = await getMongoClient();
+  try {
+    const client = await getMongoClient();
 
-  if (!client) {
+    if (!client) {
+      return NextResponse.json({ workouts: mockWorkouts });
+    }
+
+    const workouts = await client
+      .db(databaseName)
+      .collection<WorkoutDocument>(collectionName)
+      .find({})
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .toArray();
+
+    return NextResponse.json({ workouts: workouts.map(mapWorkout) });
+  } catch {
     return NextResponse.json({ workouts: mockWorkouts });
   }
-
-  const workouts = await client
-    .db(databaseName)
-    .collection<WorkoutDocument>(collectionName)
-    .find({})
-    .sort({ createdAt: -1 })
-    .limit(20)
-    .toArray();
-
-  return NextResponse.json({ workouts: workouts.map(mapWorkout) });
 }
 
 export async function POST(request: Request) {
@@ -89,9 +93,51 @@ export async function POST(request: Request) {
   const volume = sets.reduce((sum, set) => sum + set.weight * set.reps, 0);
   const now = new Date();
 
-  const client = await getMongoClient();
+  try {
+    const client = await getMongoClient();
 
-  if (!client) {
+    if (!client) {
+      return NextResponse.json({
+        workout: {
+          id: `mock-${Date.now()}`,
+          date: now.toISOString(),
+          workoutType: String(payload.workoutType ?? "Push"),
+          focus: String(payload.focus ?? "Strength"),
+          notes: payload.notes ? String(payload.notes) : null,
+          totalSets,
+          completedSets,
+          volume,
+          sets
+        }
+      });
+    }
+
+    const insert = await client.db(databaseName).collection(collectionName).insertOne({
+      workoutType: String(payload.workoutType ?? "Push"),
+      focus: String(payload.focus ?? "Strength"),
+      notes: payload.notes ? String(payload.notes) : null,
+      totalSets,
+      completedSets,
+      volume,
+      sets,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    return NextResponse.json({
+      workout: {
+        id: insert.insertedId.toString(),
+        date: now.toISOString(),
+        workoutType: String(payload.workoutType ?? "Push"),
+        focus: String(payload.focus ?? "Strength"),
+        notes: payload.notes ? String(payload.notes) : null,
+        totalSets,
+        completedSets,
+        volume,
+        sets
+      }
+    });
+  } catch {
     return NextResponse.json({
       workout: {
         id: `mock-${Date.now()}`,
@@ -106,30 +152,4 @@ export async function POST(request: Request) {
       }
     });
   }
-
-  const insert = await client.db(databaseName).collection(collectionName).insertOne({
-    workoutType: String(payload.workoutType ?? "Push"),
-    focus: String(payload.focus ?? "Strength"),
-    notes: payload.notes ? String(payload.notes) : null,
-    totalSets,
-    completedSets,
-    volume,
-    sets,
-    createdAt: now,
-    updatedAt: now
-  });
-
-  return NextResponse.json({
-    workout: {
-      id: insert.insertedId.toString(),
-      date: now.toISOString(),
-      workoutType: String(payload.workoutType ?? "Push"),
-      focus: String(payload.focus ?? "Strength"),
-      notes: payload.notes ? String(payload.notes) : null,
-      totalSets,
-      completedSets,
-      volume,
-      sets
-    }
-  });
 }

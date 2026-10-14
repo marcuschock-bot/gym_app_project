@@ -4,25 +4,40 @@ declare global {
   var mongoClientPromise: Promise<MongoClient> | undefined;
 }
 
-const uri = process.env.MONGODB_URI;
-
-export const isMongoConfigured = Boolean(uri);
-
-let clientPromise: Promise<MongoClient> | null = null;
-
-if (uri) {
-  if (!globalThis.mongoClientPromise) {
-    const client = new MongoClient(uri);
-    globalThis.mongoClientPromise = client.connect();
-  }
-
-  clientPromise = globalThis.mongoClientPromise;
-}
-
-export const getMongoClient = async (): Promise<MongoClient | null> => {
-  if (!clientPromise) {
+const sanitizeUri = (value?: string): string | null => {
+  if (!value) {
     return null;
   }
 
-  return clientPromise;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.includes("<") || trimmed.includes(">")) {
+    return null;
+  }
+
+  return trimmed.startsWith("mongodb://") || trimmed.startsWith("mongodb+srv://") ? trimmed : null;
+};
+
+const uri = sanitizeUri(process.env.MONGODB_URI);
+
+export const isMongoConfigured = Boolean(uri);
+
+export const getMongoClient = async (): Promise<MongoClient | null> => {
+  if (!uri) {
+    return null;
+  }
+
+  if (!globalThis.mongoClientPromise) {
+    const client = new MongoClient(uri);
+    globalThis.mongoClientPromise = client.connect().catch((error) => {
+      globalThis.mongoClientPromise = undefined;
+      throw error;
+    });
+  }
+
+  try {
+    return await globalThis.mongoClientPromise;
+  } catch {
+    globalThis.mongoClientPromise = undefined;
+    return null;
+  }
 };
