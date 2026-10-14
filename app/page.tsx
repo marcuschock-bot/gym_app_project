@@ -21,24 +21,15 @@ import {
   X
 } from "lucide-react";
 import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
-import {
   defaultSets,
   exercises,
   initialHistory,
-  progress,
   schedule,
   type NavLabel,
   type SessionEntry,
   type SetEntry
 } from "../lib/static-data";
+import { foodDatabase, type FoodLogEntry } from "../lib/foods";
 import { usePersistentState } from "../lib/usePersistentState";
 
 type ApiWorkout = {
@@ -91,7 +82,13 @@ export default function Home() {
   const [showAllExercises, setShowAllExercises] = usePersistentState("forge-show-all", false);
   const [sets, setSets] = usePersistentState<SetEntry[]>("forge-sets", defaultSets);
   const [sessionHistory, setSessionHistory] = usePersistentState<SessionEntry[]>("forge-history", initialHistory);
-  const [mealsLogged, setMealsLogged] = usePersistentState("forge-meals", 2);
+  const [mealsLogged, setMealsLogged] = usePersistentState<FoodLogEntry[]>("forge-meals", []);
+  const [foodQuery, setFoodQuery] = useState("");
+  const [customExerciseName, setCustomExerciseName] = useState("");
+  const [customExerciseMuscle, setCustomExerciseMuscle] = useState("Chest");
+  const [showAddExercise, setShowAddExercise] = useState(false);
+    const [showAddFood, setShowAddFood] = useState(false);
+    const [customExercises, setCustomExercises] = usePersistentState<typeof exercises[0][]>("forge-custom-exercises", []);
   const [focus, setFocus] = usePersistentState("forge-focus", "Strength");
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string>("");
@@ -132,15 +129,18 @@ export default function Home() {
   }, 0);
 
   const calorieGoal = 2400;
-  const caloriesConsumed = Math.min(1480 + mealsLogged * 220 + completedSets * 45, calorieGoal);
+  const caloriesConsumed = Math.min(
+    mealsLogged.reduce((sum, meal) => sum + meal.calories, 0),
+    calorieGoal
+  );
   const macroPercent = Math.min((caloriesConsumed / calorieGoal) * 100, 100);
 
   const filteredExercises = useMemo(
     () =>
-      exercises.filter((exercise) =>
+        [...exercises, ...customExercises].filter((exercise) =>
         `${exercise.name} ${exercise.muscle} ${exercise.equipment}`.toLowerCase().includes(query.toLowerCase())
       ),
-    [query]
+      [query, customExercises]
   );
 
   const toggleSet = (id: number) => {
@@ -162,7 +162,20 @@ export default function Home() {
     setSets((current) => (current.length > 1 ? current.slice(0, -1) : current));
   };
 
-  const resetEditor = () => {
+    const addExercise = () => {
+      if (!customExerciseName) return;
+      const newEx = {
+        name: customExerciseName,
+        muscle: customExerciseMuscle,
+        equipment: "Custom",
+        last: "—"
+      };
+      setCustomExercises((current) => [...current, newEx]);
+      setCustomExerciseName("");
+      setShowAddExercise(false);
+    };
+
+    const resetEditor = () => {
     setEditingSessionId(null);
     setWorkoutStarted(false);
     setSelectedDay("Push");
@@ -293,41 +306,92 @@ export default function Home() {
   );
 
   const renderProgressCard = () => (
-    <div className="section-block card progress-card">
-      <div className="section-heading"><div><p className="eyebrow">Stay consistent</p><h2>Training volume</h2></div><button className="period-button" onClick={() => setActiveNav("Progress")}>Last 8 weeks <ChevronRight size={14} /></button></div>
-      <div className="chart-wrap">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={progress} margin={{ top: 8, right: 4, left: -22, bottom: 0 }}>
-            <defs>
-              <linearGradient id="volumeFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#f26b5d" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="#f26b5d" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid vertical={false} stroke="#ece9e6" />
-            <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fill: "#8b8986", fontSize: 11 }} />
-            <YAxis axisLine={false} tickLine={false} tick={{ fill: "#aaa7a3", fontSize: 11 }} tickFormatter={(v) => `${v / 1000}k`} />
-            <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #eee8e4", boxShadow: "0 8px 24px rgba(40,30,20,.08)" }} formatter={(v) => [`${Number(v).toLocaleString()} kg`, "Volume"]} />
-            <Area type="monotone" dataKey="volume" stroke="#ef735f" strokeWidth={2.5} fill="url(#volumeFill)" />
-          </AreaChart>
-        </ResponsiveContainer>
+      <div className="section-block card progress-card">
+        <div className="section-heading"><div><p className="eyebrow">Stay consistent</p><h2>Training</h2></div><button className="period-button" onClick={() => setActiveNav("Progress")}>View progress <ChevronRight size={14} /></button></div>
+        <div className="chart-wrap">
+          <div className="empty-state">
+            <p>No volume chart yet — log workouts to start tracking.</p>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
 
   const renderNutritionCard = () => (
     <div className="section-block card nutrition-card">
-      <div className="section-heading"><div><p className="eyebrow">Fuel the work</p><h2>Nutrition</h2></div><button className="icon-button small" onClick={() => setMealsLogged((current) => current + 1)}><Plus size={16} /></button></div>
+        <div className="section-heading"><div><p className="eyebrow">Fuel the work</p><h2>Nutrition</h2></div><button className="icon-button small" onClick={() => setShowAddFood(!showAddFood)}><Plus size={16} /></button></div>
       <div className="calorie-total"><strong>{caloriesConsumed}</strong><span>/ {calorieGoal} kcal</span></div>
       <div className="calorie-bar"><span style={{ width: `${macroPercent}%` }} /></div>
       <div className="macro-list">
-        <div><span className="macro-dot protein" /><span>Protein</span><strong>{80 + mealsLogged * 2}g</strong></div>
-        <div><span className="macro-dot carbs" /><span>Carbs</span><strong>{128 + mealsLogged * 4}g</strong></div>
-        <div><span className="macro-dot fats" /><span>Fats</span><strong>{33 + mealsLogged}g</strong></div>
+          <div><span className="macro-dot protein" /><span>Protein</span><strong>{mealsLogged.reduce((sum, m) => sum + m.protein, 0)}g</strong></div>
+          <div><span className="macro-dot carbs" /><span>Carbs</span><strong>{mealsLogged.reduce((sum, m) => sum + m.carbs, 0)}g</strong></div>
+          <div><span className="macro-dot fats" /><span>Fats</span><strong>{mealsLogged.reduce((sum, m) => sum + m.fats, 0)}g</strong></div>
       </div>
-      <button className="outline-button" onClick={() => setMealsLogged((current) => current + 1)}>Log a meal <Plus size={15} /></button>
-    </div>
-  );
+        <button className="outline-button" onClick={() => setShowAddFood(!showAddFood)}>Log a meal <Plus size={15} /></button>
+        {showAddFood && (
+          <div className="add-food-form">
+            <input
+              value={foodQuery}
+              onChange={(event) => setFoodQuery(event.target.value)}
+              placeholder="Search or type food name..."
+              style={{ width: "100%", marginBottom: 8, padding: 6, borderRadius: 5, border: "1px solid #ddd" }}
+            />
+            <div>
+              {foodDatabase
+                .filter((f) => f.name.toLowerCase().includes(foodQuery.toLowerCase()))
+                .slice(0, 5)
+                .map((food) => (
+                  <button
+                    key={food.name}
+                    className="add-food-option"
+                    onClick={() => {
+                      const existing = mealsLogged.find((m) => m.name === food.name);
+                      if (existing) {
+                        setMealsLogged((current) =>
+                          current.map((m) =>
+                            m.name === food.name
+                                                      ? { ...m, servings: m.servings + 1, calories: m.calories + food.calories }
+                                                      : m
+                                                  )
+                                                );
+                      } else {
+                        setMealsLogged((current) => [
+                          ...current,
+                          {
+                            id: Math.random().toString(36).slice(2),
+                            name: food.name,
+                            serving: food.serving,
+                            servings: 1,
+                            calories: food.calories,
+                            protein: food.protein,
+                            carbs: food.carbs,
+                            fats: food.fats
+                          }
+                        ]);
+                      }
+                      setFoodQuery("");
+                      setShowAddFood(false);
+                    }}
+                  >
+                    <span>{food.name}</span> · {food.serving} · {food.calories} kcal
+                  </button>
+                ))}
+            </div>
+            <button
+              className="add-custom-food"
+              onClick={() => setShowAddFood(false)}
+            >
+              Add custom food
+            </button>
+            <input
+              value={customExerciseName}
+              onChange={(event) => setCustomExerciseName(event.target.value)}
+              placeholder="Custom food name"
+              style={{ width: "100%", marginTop: 8, padding: 6, borderRadius: 5, border: "1px solid #ddd" }}
+            />
+          </div>
+        )}
+      </div>
+    );
 
   const renderLibraryCard = () => (
     <div className="section-block">
@@ -343,10 +407,48 @@ export default function Home() {
               <ChevronRight size={16} className="muted-icon" />
             </button>
           ))}
+            {showAllExercises ? null : (
+              <button type="button" className="exercise-row" style={{ borderBottom: 0, marginTop: 8 }}>
+                <div className="exercise-thumb"><Plus size={17} /></div>
+                <div className="exercise-info">
+                  <strong>Add custom exercise</strong>
+                  <span>({customExerciseMuscle})</span>
+                </div>
+              </button>
+            )}
+          </div>
         </div>
+        {showAddExercise && (
+          <div className="add-exercise-form">
+            <input
+              value={customExerciseName}
+              onChange={(event) => setCustomExerciseName(event.target.value)}
+              placeholder="Exercise name"
+              style={{ width: "100%", marginBottom: 8, padding: 6, borderRadius: 5, border: "1px solid #ddd" }}
+            />
+            <select
+              value={customExerciseMuscle}
+              onChange={(event) => setCustomExerciseMuscle(event.target.value)}
+              style={{ width: "100%", marginTop: 8, padding: 6, borderRadius: 5, border: "1px solid #ddd" }}
+            >
+              <option value="Chest">Chest</option>
+              <option value="Back">Back</option>
+              <option value="Legs">Legs</option>
+              <option value="Shoulders">Shoulders</option>
+              <option value="Arms">Arms</option>
+              <option value="Abs">Abs</option>
+            </select>
+            <button
+              className="add-exercise-submit"
+              onClick={addExercise}
+              style={{ width: "100%", marginTop: 8, padding: 6, background: "#f26b5d", color: "white", border: "none", borderRadius: 5 }}
+            >
+              Add
+            </button>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
 
   const renderActiveCard = () => (
     <div className="section-block">

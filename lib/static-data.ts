@@ -17,11 +17,6 @@ export type Exercise = {
   last: string;
 };
 
-export type ProgressPoint = {
-  week: string;
-  volume: number;
-};
-
 export type SetEntry = {
   id: number;
   weight: string;
@@ -112,15 +107,4 @@ export const initialHistory: SessionEntry[] = [
       { id: 3, weight: "30", reps: "12", done: true }
     ]
   }
-];
-
-export const progress: ProgressPoint[] = [
-  { week: "W1", volume: 8200 },
-  { week: "W2", volume: 9400 },
-  { week: "W3", volume: 9100 },
-  { week: "W4", volume: 10800 },
-  { week: "W5", volume: 11600 },
-  { week: "W6", volume: 12400 },
-  { week: "W7", volume: 11900 },
-  { week: "W8", volume: 13800 }
 ];
