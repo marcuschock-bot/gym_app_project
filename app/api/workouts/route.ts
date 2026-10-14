@@ -1,57 +1,25 @@
 import { NextResponse } from "next/server";
 
-import { mockWorkouts } from "../../../lib/mock-data";
+import { createWorkout, type WorkoutInput } from "../../../lib/workouts";
+import { insertWorkout, listWorkouts } from "../../../lib/storage";
 
-type WorkoutSet = {
-  id: string;
-  weight: number;
-  reps: number;
-  done: boolean;
-  order: number;
-};
-
-const normalizeSets = (setsInput: unknown): WorkoutSet[] => {
-  if (!Array.isArray(setsInput)) {
-    return [];
-  }
-
-  return setsInput.map((set, index) => {
-    const candidate = typeof set === "object" && set !== null ? (set as Record<string, unknown>) : {};
-    return {
-      id: String(candidate.id ?? `${Date.now()}-${index}`),
-      weight: Number(candidate.weight ?? 0),
-      reps: Number(candidate.reps ?? 0),
-      done: Boolean(candidate.done),
-      order: Number(candidate.order ?? index)
-    };
-  });
-};
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ workouts: mockWorkouts, storage: "local" });
+  const workouts = await listWorkouts();
+  return NextResponse.json({ workouts, storage: "local" });
 }
 
 export async function POST(request: Request) {
-  const payload = (await request.json()) as Record<string, unknown>;
+  let payload: WorkoutInput;
+  try {
+    payload = (await request.json()) as WorkoutInput;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-  const sets = normalizeSets(payload.sets);
-  const totalSets = sets.length;
-  const completedSets = sets.filter((set) => set.done).length;
-  const volume = sets.reduce((sum, set) => sum + set.weight * set.reps, 0);
-  const now = new Date();
+  const workout = createWorkout(payload);
+  const stored = await insertWorkout(workout);
 
-  return NextResponse.json({
-    workout: {
-      id: `local-${Date.now()}`,
-      date: now.toISOString(),
-      workoutType: String(payload.workoutType ?? "Push"),
-      focus: String(payload.focus ?? "Strength"),
-      notes: payload.notes ? String(payload.notes) : null,
-      totalSets,
-      completedSets,
-      volume,
-      sets
-    },
-    storage: "local"
-  });
+  return NextResponse.json({ workout: stored, storage: "local" }, { status: 201 });
 }
