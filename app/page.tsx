@@ -6,11 +6,13 @@ import {
   BarChart3,
   BookOpen,
   CalendarDays,
+  Check,
   ChevronRight,
   Dumbbell,
   Flame,
   LayoutDashboard,
   Menu,
+  Minus,
   MoreHorizontal,
   Plus,
   Search,
@@ -18,6 +20,7 @@ import {
   Target,
   Trash2,
   Utensils,
+  UserRound,
   X
 } from "lucide-react";
 import {
@@ -29,7 +32,7 @@ import {
   type SessionEntry,
   type SetEntry
 } from "../lib/static-data";
-import { foodDatabase, type FoodLogEntry } from "../lib/foods";
+import { foodDatabase, type FoodItem, type FoodLogEntry } from "../lib/foods";
 import { usePersistentState } from "../lib/usePersistentState";
 
 type ApiWorkout = {
@@ -43,6 +46,9 @@ type ApiWorkout = {
   volume: number;
   sets?: Array<{ id?: string; weight: number; reps: number; done: boolean; order?: number }>;
 };
+
+type Account = { name: string; email: string; password: string };
+type RemoteFood = FoodLogEntry & { id: string };
 
 const navItems: Array<{ label: NavLabel; icon: React.ComponentType<{ size?: number }> }> = [
   { label: "Overview", icon: LayoutDashboard },
@@ -116,6 +122,14 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [calendarDate, setCalendarDate] = useState("");
   const calendarInputRef = useRef<HTMLInputElement>(null);
+  const [account, setAccount] = usePersistentState<Account | null>("forge-account", null);
+  const [authMode, setAuthMode] = useState<"signin" | "register" | null>(null);
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [remoteFoods, setRemoteFoods] = useState<RemoteFood[]>([]);
+  const [foodSearchPending, setFoodSearchPending] = useState(false);
+  const [customFoodCalories, setCustomFoodCalories] = useState("");
 
   useEffect(() => {
     setCalendarDate(toDateInputValue(new Date()));
@@ -199,10 +213,16 @@ export default function Home() {
 
   const removeLastSet = () => {
     setSets((current) => (current.length > 1 ? current.slice(0, -1) : current));
+    setStatusText("Removed the last set.");
+    setStatusTone("ok");
   };
 
-    const addExercise = () => {
-      if (!customExerciseName) return;
+  const addExercise = () => {
+      if (!customExerciseName.trim()) {
+        setStatusText("Enter an exercise name first.");
+        setStatusTone("warn");
+        return;
+      }
       const newEx = {
         name: customExerciseName,
         muscle: customExerciseMuscle,
@@ -212,7 +232,102 @@ export default function Home() {
       setCustomExercises((current) => [...current, newEx]);
       setCustomExerciseName("");
       setShowAddExercise(false);
+      setStatusText(`${customExerciseName} added to your library.`);
+      setStatusTone("ok");
     };
+
+  const searchFoods = async (value: string) => {
+    setFoodQuery(value);
+    if (value.trim().length < 2) {
+      setRemoteFoods([]);
+      return;
+    }
+
+    setFoodSearchPending(true);
+    try {
+      const response = await fetch(`/api/foods/search?q=${encodeURIComponent(value.trim())}`);
+      const data = (await response.json()) as { foods?: RemoteFood[]; error?: string };
+      if (!response.ok) {
+        setStatusText(data.error ?? "Food search is unavailable.");
+        setStatusTone("warn");
+        setRemoteFoods([]);
+        return;
+      }
+      setRemoteFoods(data.foods ?? []);
+    } catch {
+      setStatusText("Food search could not connect.");
+      setStatusTone("warn");
+    } finally {
+      setFoodSearchPending(false);
+    }
+  };
+
+  const addMeal = (food: FoodItem | FoodLogEntry) => {
+    setMealsLogged((current) => {
+      const existing = current.find((meal) => meal.name === food.name);
+      if (existing) {
+        return current.map((meal) => meal.name === food.name
+          ? { ...meal, servings: meal.servings + 1, calories: meal.calories + food.calories }
+          : meal);
+      }
+      return [...current, {
+        ...food,
+        id: "id" in food ? food.id : Math.random().toString(36).slice(2),
+        servings: "servings" in food ? food.servings : 1
+      }];
+    });
+    setFoodQuery("");
+    setRemoteFoods([]);
+    setShowAddFood(false);
+    setStatusText(`${food.name} added to today’s nutrition.`);
+    setStatusTone("ok");
+  };
+
+  const addCustomFood = () => {
+    const calories = Number(customFoodCalories);
+    if (!foodQuery.trim() || !Number.isFinite(calories) || calories < 0) {
+      setStatusText("Enter a food name and valid calories.");
+      setStatusTone("warn");
+      return;
+    }
+    addMeal({ id: "", name: foodQuery.trim(), serving: "1 serving", servings: 1, calories, protein: 0, carbs: 0, fats: 0 });
+    setCustomFoodCalories("");
+  };
+
+  const submitAuth = () => {
+    const email = authEmail.trim().toLowerCase();
+    if (!email || authPassword.length < 6 || (authMode === "register" && !authName.trim())) {
+      setStatusText("Enter all fields. Passwords must be at least 6 characters.");
+      setStatusTone("warn");
+      return;
+    }
+    const users = JSON.parse(window.localStorage.getItem("forge-users") ?? "[]") as Account[];
+    if (authMode === "register") {
+      if (users.some((user) => user.email === email)) {
+        setStatusText("An account with that email already exists.");
+        setStatusTone("warn");
+        return;
+      }
+      const next = { name: authName.trim(), email, password: authPassword };
+      window.localStorage.setItem("forge-users", JSON.stringify([...users, next]));
+      setAccount(next);
+      setStatusText("Account created. You’re signed in.");
+    } else {
+      const found = users.find((user) => user.email === email && user.password === authPassword);
+      if (!found) {
+        setStatusText("Email or password is incorrect.");
+        setStatusTone("warn");
+        return;
+      }
+      setAccount(found);
+      setStatusText(`Welcome back, ${found.name}.`);
+    }
+    setStatusTone("ok");
+    setAuthMode(null);
+    setAuthName("");
+    setAuthEmail("");
+    setAuthPassword("");
+  };
 
     const resetEditor = () => {
     setEditingSessionId(null);
@@ -385,63 +500,35 @@ export default function Home() {
           <div className="add-food-form">
             <input
               value={foodQuery}
-              onChange={(event) => setFoodQuery(event.target.value)}
-              placeholder="Search or type food name..."
+              onChange={(event) => void searchFoods(event.target.value)}
+              placeholder="Search FatSecret foods..."
               style={{ width: "100%", marginBottom: 8, padding: 6, borderRadius: 5, border: "1px solid #ddd" }}
             />
             <div>
-              {foodDatabase
-                .filter((f) => f.name.toLowerCase().includes(foodQuery.toLowerCase()))
-                .slice(0, 5)
-                .map((food) => (
+              {foodSearchPending && <p className="form-help">Searching FatSecret...</p>}
+              {!foodSearchPending && remoteFoods.length === 0 && foodQuery.length < 2 && (
+                <p className="form-help">Type at least 2 characters to search the full food database.</p>
+              )}
+              {(remoteFoods.length ? remoteFoods : foodDatabase
+                .filter((food) => food.name.toLowerCase().includes(foodQuery.toLowerCase()))
+                .slice(0, 5)).map((food) => (
                   <button
                     key={food.name}
                     className="add-food-option"
-                    onClick={() => {
-                      const existing = mealsLogged.find((m) => m.name === food.name);
-                      if (existing) {
-                        setMealsLogged((current) =>
-                          current.map((m) =>
-                            m.name === food.name
-                                                      ? { ...m, servings: m.servings + 1, calories: m.calories + food.calories }
-                                                      : m
-                                                  )
-                                                );
-                      } else {
-                        setMealsLogged((current) => [
-                          ...current,
-                          {
-                            id: Math.random().toString(36).slice(2),
-                            name: food.name,
-                            serving: food.serving,
-                            servings: 1,
-                            calories: food.calories,
-                            protein: food.protein,
-                            carbs: food.carbs,
-                            fats: food.fats
-                          }
-                        ]);
-                      }
-                      setFoodQuery("");
-                      setShowAddFood(false);
-                    }}
+                    onClick={() => addMeal(food)}
                   >
                     <span>{food.name}</span> · {food.serving} · {food.calories} kcal
                   </button>
                 ))}
             </div>
-            <button
-              className="add-custom-food"
-              onClick={() => setShowAddFood(false)}
-            >
-              Add custom food
-            </button>
             <input
-              value={customExerciseName}
-              onChange={(event) => setCustomExerciseName(event.target.value)}
-              placeholder="Custom food name"
+              value={customFoodCalories}
+              onChange={(event) => setCustomFoodCalories(event.target.value)}
+              placeholder="Custom calories"
+              type="number"
               style={{ width: "100%", marginTop: 8, padding: 6, borderRadius: 5, border: "1px solid #ddd" }}
             />
+            <button className="add-custom-food" onClick={addCustomFood}>Add custom food</button>
           </div>
         )}
       </div>
@@ -462,7 +549,7 @@ export default function Home() {
             </button>
           ))}
             {showAllExercises ? null : (
-              <button type="button" className="exercise-row" style={{ borderBottom: 0, marginTop: 8 }}>
+              <button type="button" className="exercise-row" style={{ borderBottom: 0, marginTop: 8 }} onClick={() => setShowAddExercise((open) => !open)}>
                 <div className="exercise-thumb"><Plus size={17} /></div>
                 <div className="exercise-info">
                   <strong>Add custom exercise</strong>
@@ -506,7 +593,7 @@ export default function Home() {
 
   const renderActiveCard = () => (
     <div className="section-block">
-      <div className="section-heading"><div><p className="eyebrow">In the moment</p><h2>{workoutStarted ? "Active workout" : "Next up"}</h2></div><button className="icon-button small" onClick={removeLastSet}><MoreHorizontal size={16} /></button></div>
+      <div className="section-heading"><div><p className="eyebrow">In the moment</p><h2>{workoutStarted ? "Active workout" : "Next up"}</h2></div><button className="icon-button small" onClick={removeLastSet} aria-label="Remove last set" title="Remove last set"><Minus size={16} /></button></div>
       <div className="active-card card">
         <div className="active-top">
           <div className="active-icon"><Dumbbell size={20} /></div>
@@ -521,12 +608,12 @@ export default function Home() {
           <div className="set-head"><span>SET</span><span>WEIGHT</span><span>REPS</span><span /></div>
           {sets.map((set, index) => (
             <div className={`set-row ${set.done ? "complete" : ""}`} key={set.id}>
-              <button className="set-number" onClick={() => toggleSet(set.id)}>{set.done ? "?" : index + 1}</button>
+              <button className="set-number" onClick={() => toggleSet(set.id)}>{set.done ? "✓" : index + 1}</button>
               <input value={set.weight} onChange={(event) => updateSetValue(set.id, "weight", event.target.value)} />
               <span>kg</span>
               <input value={set.reps} onChange={(event) => updateSetValue(set.id, "reps", event.target.value)} />
               <span className="reps-label">reps</span>
-              <button className="more-button" onClick={() => toggleSet(set.id)}><MoreHorizontal size={15} /></button>
+              <button className="more-button" onClick={() => toggleSet(set.id)} aria-label={set.done ? "Mark incomplete" : "Mark complete"}><Check size={15} /></button>
             </div>
           ))}
         </div>
@@ -578,7 +665,7 @@ export default function Home() {
       </section>
 
       <section className="metric-row">
-        <div className="metric-card card"><div className="metric-icon coral"><Activity size={18} /></div><span className="metric-label">Weekly volume</span><strong>{(totalVolume + 12000).toLocaleString()} <small>kg</small></strong><span className="metric-change up">? 8.4% <em>vs last week</em></span></div>
+        <div className="metric-card card"><div className="metric-icon coral"><Activity size={18} /></div><span className="metric-label">Weekly volume</span><strong>{(totalVolume + 12000).toLocaleString()} <small>kg</small></strong><span className="metric-change up">↑ 8.4% <em>vs last week</em></span></div>
         <div className="metric-card card"><div className="metric-icon violet"><Target size={18} /></div><span className="metric-label">Workouts done</span><strong>{sessionHistory.length} <small>sessions</small></strong><span className="metric-change up">Active this week</span></div>
         <div className="metric-card card"><div className="metric-icon blue"><Flame size={18} /></div><span className="metric-label">Current streak</span><strong>12 <small>days</small></strong><span className="metric-change neutral">Best: 19 days</span></div>
       </section>
@@ -668,8 +755,8 @@ export default function Home() {
         </div>
         <div className="profile-card">
           <div className="avatar">MC</div>
-          <div><strong>Marcus Chen</strong><span>Intermediate · 3 day split</span></div>
-          <MoreHorizontal size={18} className="muted-icon" />
+          <div><strong>{account?.name ?? "Guest"}</strong><span>{account ? "Member · 3 day split" : "Guest · 3 day split"}</span></div>
+          <button className="icon-button small" style={{border:0,background:"none"}} onClick={() => setAuthMode(account ? "signin" : "register")} aria-label="Account options"><MoreHorizontal size={18} className="muted-icon" /></button>
         </div>
         <nav className="nav-list">
           <p className="nav-label">Workspace</p>
@@ -682,7 +769,7 @@ export default function Home() {
         </nav>
         <div className="sidebar-bottom">
           <div className="streak-card"><Flame size={18} fill="currentColor" /><div><strong>12 day streak</strong><span>Keep the momentum going</span></div></div>
-          <button className="nav-item" onClick={() => setStatusText("Settings panel is coming in the next iteration.")}><Settings size={18} /><span>Settings</span></button>
+          <button className="nav-item" onClick={() => { setStatusText("Settings are saved automatically on this device."); setStatusTone("ok"); }}><Settings size={18} /><span>Settings</span></button>
         </div>
       </aside>
 
@@ -691,7 +778,7 @@ export default function Home() {
           <button className="mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open menu"><Menu size={22} /></button>
           <div>
             <p className="eyebrow">{formatDateLabel(calendarDate)}</p>
-            <h1>Good morning, Marcus <span className="wave">?</span></h1>
+            <h1>Good morning, {account?.name ?? "Guest"} <span className="wave">👋</span></h1>
             <p className="workspace-subtitle">Workspace: {activeNav}</p>
           </div>
           <div className="top-actions">
@@ -723,7 +810,9 @@ export default function Home() {
               }}
               aria-label="Choose calendar date"
             />
-            <button className="top-avatar">MC</button>
+            <button className="top-avatar" onClick={() => setAuthMode(account ? "signin" : "register")} aria-label="Account">
+              {account ? account.name.slice(0, 2).toUpperCase() : <UserRound size={16} />}
+            </button>
           </div>
         </header>
 
@@ -733,6 +822,33 @@ export default function Home() {
           {renderWorkspace()}
         </div>
       </section>
+      {authMode && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setAuthMode(null)}>
+          <section className="auth-modal card" role="dialog" aria-modal="true" aria-labelledby="auth-title" onClick={(event) => event.stopPropagation()}>
+            <div className="section-heading">
+              <div><p className="eyebrow">Your account</p><h2 id="auth-title">{account ? "Account" : authMode === "register" ? "Create your account" : "Sign in"}</h2></div>
+              <button className="icon-button small" onClick={() => setAuthMode(null)} aria-label="Close account dialog"><X size={16} /></button>
+            </div>
+            {account ? (
+              <div className="auth-content">
+                <p>Signed in as <strong>{account.email}</strong>. Your local guest data stays on this device.</p>
+                <button className="outline-button auth-action" onClick={() => { setAccount(null); setAuthMode(null); setStatusText("Signed out. You are now using Forge as a guest."); }}>Sign out</button>
+              </div>
+            ) : (
+              <>
+                {authMode === "register" && <input className="auth-input" value={authName} onChange={(event) => setAuthName(event.target.value)} placeholder="Name" autoComplete="name" />}
+                <input className="auth-input" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="Email" type="email" autoComplete="email" />
+                <input className="auth-input" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="Password (6+ characters)" type="password" autoComplete={authMode === "register" ? "new-password" : "current-password"} />
+                <button className="primary-button auth-action" onClick={submitAuth}>{authMode === "register" ? "Register" : "Sign in"}</button>
+                <button className="text-button auth-switch" onClick={() => setAuthMode(authMode === "register" ? "signin" : "register")}>
+                  {authMode === "register" ? "Already have an account? Sign in" : "New here? Register"}
+                </button>
+                <p className="form-help">You can continue as a guest. Accounts currently stay on this browser until a server auth provider is connected.</p>
+              </>
+            )}
+          </section>
+        </div>
+      )}
     </main>
   );
 }

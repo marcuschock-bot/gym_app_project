@@ -2,6 +2,9 @@
   "name": "gym-app-mvp",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +13,8 @@
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
-    "next": "^15.0.3",
+    "mongodb": "^7.7.0",
+    "next": "^16.4.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.13.3"
