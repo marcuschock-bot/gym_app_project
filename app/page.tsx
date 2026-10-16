@@ -67,7 +67,7 @@ const mapApiWorkout = (session: ApiWorkout): SessionEntry => ({
   totalSets: session.totalSets ?? 0,
   completedSets: session.completedSets ?? 0,
   volume: session.volume ?? 0,
-  sets: (session.sets ?? []).map((set, index) => ({
+  sets: (Array.isArray(session?.sets) ? session.sets : []).map((set, index) => ({
     id: index + 1,
     weight: String(set.weight ?? 0),
     reps: String(set.reps ?? 0),
@@ -161,8 +161,13 @@ export default function Home() {
     void loadWorkouts();
   }, []);
 
-  const completedSets = sets.filter((set) => set.done).length;
-  const totalVolume = sets.reduce((sum, set) => {
+  const safeSets = Array.isArray(sets) ? sets : defaultSets;
+  const safeMeals = Array.isArray(mealsLogged) ? mealsLogged : [];
+  const safeHistory = Array.isArray(sessionHistory) ? sessionHistory : initialHistory;
+  const safeCustomExercises = Array.isArray(customExercises) ? customExercises : [];
+
+  const completedSets = safeSets.filter((set) => set.done).length;
+  const totalVolume = safeSets.reduce((sum, set) => {
     const weight = Number.parseFloat(set.weight || "0");
     const reps = Number.parseFloat(set.reps || "0");
     return sum + (Number.isFinite(weight) && Number.isFinite(reps) ? weight * reps : 0);
@@ -170,17 +175,17 @@ export default function Home() {
 
   const calorieGoal = 2400;
   const caloriesConsumed = Math.min(
-    mealsLogged.reduce((sum, meal) => sum + meal.calories, 0),
+    safeMeals.reduce((sum, meal) => sum + (Number(meal.calories) || 0), 0),
     calorieGoal
   );
   const macroPercent = Math.min((caloriesConsumed / calorieGoal) * 100, 100);
 
   const filteredExercises = useMemo(
     () =>
-        [...exercises, ...customExercises].filter((exercise) =>
-        `${exercise.name} ${exercise.muscle} ${exercise.equipment}`.toLowerCase().includes(query.toLowerCase())
+        [...exercises, ...safeCustomExercises].filter((exercise) =>
+        `${exercise.name} ${exercise.muscle} ${exercise.equipment}`.toLowerCase().includes((query || "").toLowerCase())
       ),
-      [query, customExercises]
+      [query, safeCustomExercises]
   );
 
   const visibleSchedule = useMemo(() => {
@@ -197,22 +202,28 @@ export default function Home() {
   }, [calendarDate]);
 
   const toggleSet = (id: number) => {
-    setSets((current) => current.map((set) => (set.id === id ? { ...set, done: !set.done } : set)));
+    setSets((current) => (Array.isArray(current) ? current : defaultSets).map((set) => (set.id === id ? { ...set, done: !set.done } : set)));
   };
 
   const updateSetValue = (id: number, field: "weight" | "reps", value: string) => {
-    setSets((current) => current.map((set) => (set.id === id ? { ...set, [field]: value } : set)));
+    setSets((current) => (Array.isArray(current) ? current : defaultSets).map((set) => (set.id === id ? { ...set, [field]: value } : set)));
   };
 
   const addSet = () => {
-    setSets((current) => [
-      ...current,
-      { id: Math.max(0, ...current.map((set) => set.id)) + 1, weight: "60", reps: "8", done: false }
-    ]);
+    setSets((current) => {
+      const list = Array.isArray(current) ? current : defaultSets;
+      return [
+        ...list,
+        { id: Math.max(0, ...list.map((set) => set.id)) + 1, weight: "60", reps: "8", done: false }
+      ];
+    });
   };
 
   const removeLastSet = () => {
-    setSets((current) => (current.length > 1 ? current.slice(0, -1) : current));
+    setSets((current) => {
+      const list = Array.isArray(current) ? current : defaultSets;
+      return list.length > 1 ? list.slice(0, -1) : list;
+    });
     setStatusText("Removed the last set.");
     setStatusTone("ok");
   };
@@ -229,7 +240,7 @@ export default function Home() {
         equipment: "Custom",
         last: "—"
       };
-      setCustomExercises((current) => [...current, newEx]);
+      setCustomExercises((current) => [...(Array.isArray(current) ? current : []), newEx]);
       setCustomExerciseName("");
       setShowAddExercise(false);
       setStatusText(`${customExerciseName} added to your library.`);
@@ -264,13 +275,14 @@ export default function Home() {
 
   const addMeal = (food: FoodItem | FoodLogEntry) => {
     setMealsLogged((current) => {
-      const existing = current.find((meal) => meal.name === food.name);
+      const list = Array.isArray(current) ? current : [];
+      const existing = list.find((meal) => meal.name === food.name);
       if (existing) {
-        return current.map((meal) => meal.name === food.name
+        return list.map((meal) => meal.name === food.name
           ? { ...meal, servings: meal.servings + 1, calories: meal.calories + food.calories }
           : meal);
       }
-      return [...current, {
+      return [...list, {
         ...food,
         id: "id" in food ? food.id : Math.random().toString(36).slice(2),
         servings: "servings" in food ? food.servings : 1
@@ -342,7 +354,7 @@ export default function Home() {
     setSelectedDay(session.workoutType);
     setFocus(session.focus);
     setSets(
-      session.sets.length > 0
+      Array.isArray(session?.sets) && session.sets.length > 0
         ? session.sets.map((set, index) => ({ ...set, id: index + 1 }))
         : defaultSets
     );
@@ -353,7 +365,7 @@ export default function Home() {
   };
 
   const deleteSession = async (sessionId: string) => {
-    setSessionHistory((current) => current.filter((session) => session.id !== sessionId));
+    setSessionHistory((current) => (Array.isArray(current) ? current : initialHistory).filter((session) => session.id !== sessionId));
 
     if (editingSessionId === sessionId) {
       resetEditor();
@@ -379,7 +391,7 @@ export default function Home() {
       workoutType: selectedDay === "Rest" ? "Recovery" : selectedDay,
       focus,
       notes: `${selectedDay} session`,
-      sets: sets.map((set, index) => ({
+      sets: safeSets.map((set, index) => ({
         id: String(index + 1),
         weight: Number.parseFloat(set.weight || "0"),
         reps: Number.parseInt(set.reps || "0", 10),
@@ -394,15 +406,16 @@ export default function Home() {
       workoutType: payload.workoutType,
       focus: payload.focus,
       notes: payload.notes,
-      totalSets: sets.length,
+      totalSets: safeSets.length,
       completedSets,
       volume: totalVolume,
-      sets
+      sets: safeSets
     };
 
     const applySavedSession = (session: SessionEntry) => {
       setSessionHistory((current) => {
-        const withoutOld = editingSessionId ? current.filter((item) => item.id !== editingSessionId) : current;
+        const list = Array.isArray(current) ? current : initialHistory;
+        const withoutOld = editingSessionId ? list.filter((item) => item.id !== editingSessionId) : list;
         return [session, ...withoutOld];
       });
     };
@@ -491,9 +504,9 @@ export default function Home() {
       <div className="calorie-total"><strong>{caloriesConsumed}</strong><span>/ {calorieGoal} kcal</span></div>
       <div className="calorie-bar"><span style={{ width: `${macroPercent}%` }} /></div>
       <div className="macro-list">
-          <div><span className="macro-dot protein" /><span>Protein</span><strong>{mealsLogged.reduce((sum, m) => sum + m.protein, 0)}g</strong></div>
-          <div><span className="macro-dot carbs" /><span>Carbs</span><strong>{mealsLogged.reduce((sum, m) => sum + m.carbs, 0)}g</strong></div>
-          <div><span className="macro-dot fats" /><span>Fats</span><strong>{mealsLogged.reduce((sum, m) => sum + m.fats, 0)}g</strong></div>
+          <div><span className="macro-dot protein" /><span>Protein</span><strong>{safeMeals.reduce((sum, m) => sum + (Number(m.protein) || 0), 0)}g</strong></div>
+          <div><span className="macro-dot carbs" /><span>Carbs</span><strong>{safeMeals.reduce((sum, m) => sum + (Number(m.carbs) || 0), 0)}g</strong></div>
+          <div><span className="macro-dot fats" /><span>Fats</span><strong>{safeMeals.reduce((sum, m) => sum + (Number(m.fats) || 0), 0)}g</strong></div>
       </div>
         <button className="outline-button" onClick={() => setShowAddFood(!showAddFood)}>Log a meal <Plus size={15} /></button>
         {showAddFood && (
@@ -601,12 +614,12 @@ export default function Home() {
             <strong>{selectedDay === "Rest" ? "Recovery" : `${selectedDay} day`}</strong>
             <span>{selectedDay === "Rest" ? "Light movement and mobility" : "Build strong, clean reps"}</span>
           </div>
-          <Badge tone="green">{completedSets}/{sets.length} sets</Badge>
+          <Badge tone="green">{completedSets}/{safeSets.length} sets</Badge>
         </div>
 
         <div className="set-table">
           <div className="set-head"><span>SET</span><span>WEIGHT</span><span>REPS</span><span /></div>
-          {sets.map((set, index) => (
+          {safeSets.map((set, index) => (
             <div className={`set-row ${set.done ? "complete" : ""}`} key={set.id}>
               <button className="set-number" onClick={() => toggleSet(set.id)}>{set.done ? "✓" : index + 1}</button>
               <input value={set.weight} onChange={(event) => updateSetValue(set.id, "weight", event.target.value)} />
@@ -629,7 +642,7 @@ export default function Home() {
         <div className="history-panel">
           <div className="section-heading mini-heading"><div><p className="eyebrow">Recent sessions</p><h2>Logbook</h2></div></div>
           <div className="history-list">
-            {sessionHistory.map((session) => (
+            {safeHistory.map((session) => (
               <div key={session.id} className="history-row">
                 <div className="history-date">{session.date}</div>
                 <div className="history-body">
@@ -666,7 +679,7 @@ export default function Home() {
 
       <section className="metric-row">
         <div className="metric-card card"><div className="metric-icon coral"><Activity size={18} /></div><span className="metric-label">Weekly volume</span><strong>{(totalVolume + 12000).toLocaleString()} <small>kg</small></strong><span className="metric-change up">↑ 8.4% <em>vs last week</em></span></div>
-        <div className="metric-card card"><div className="metric-icon violet"><Target size={18} /></div><span className="metric-label">Workouts done</span><strong>{sessionHistory.length} <small>sessions</small></strong><span className="metric-change up">Active this week</span></div>
+        <div className="metric-card card"><div className="metric-icon violet"><Target size={18} /></div><span className="metric-label">Workouts done</span><strong>{safeHistory.length} <small>sessions</small></strong><span className="metric-change up">Active this week</span></div>
         <div className="metric-card card"><div className="metric-icon blue"><Flame size={18} /></div><span className="metric-label">Current streak</span><strong>12 <small>days</small></strong><span className="metric-change neutral">Best: 19 days</span></div>
       </section>
 
@@ -696,16 +709,16 @@ export default function Home() {
   const renderProgress = () => (
     <>
       <section className="metric-row">
-        <div className="metric-card card"><div className="metric-icon coral"><Activity size={18} /></div><span className="metric-label">Latest session volume</span><strong>{sessionHistory[0]?.volume.toLocaleString() ?? 0} <small>kg</small></strong><span className="metric-change up">{sessionHistory[0]?.workoutType ?? "No data"}</span></div>
-        <div className="metric-card card"><div className="metric-icon violet"><Target size={18} /></div><span className="metric-label">Completion rate</span><strong>{sets.length ? Math.round((completedSets / sets.length) * 100) : 0}%</strong><span className="metric-change up">Current workout</span></div>
-        <div className="metric-card card"><div className="metric-icon blue"><BarChart3 size={18} /></div><span className="metric-label">Total sessions</span><strong>{sessionHistory.length}</strong><span className="metric-change neutral">Stored in logbook</span></div>
+        <div className="metric-card card"><div className="metric-icon coral"><Activity size={18} /></div><span className="metric-label">Latest session volume</span><strong>{safeHistory[0]?.volume.toLocaleString() ?? 0} <small>kg</small></strong><span className="metric-change up">{safeHistory[0]?.workoutType ?? "No data"}</span></div>
+        <div className="metric-card card"><div className="metric-icon violet"><Target size={18} /></div><span className="metric-label">Completion rate</span><strong>{safeSets.length ? Math.round((completedSets / safeSets.length) * 100) : 0}%</strong><span className="metric-change up">Current workout</span></div>
+        <div className="metric-card card"><div className="metric-icon blue"><BarChart3 size={18} /></div><span className="metric-label">Total sessions</span><strong>{safeHistory.length}</strong><span className="metric-change neutral">Stored in logbook</span></div>
       </section>
       <section className="content-two-col">
         {renderProgressCard()}
         <div className="section-block card progress-card">
           <div className="section-heading"><div><p className="eyebrow">Session notes</p><h2>Recent highlights</h2></div></div>
           <div className="history-list">
-            {sessionHistory.slice(0, 5).map((session) => (
+            {safeHistory.slice(0, 5).map((session) => (
               <div key={`progress-${session.id}`} className="history-row">
                 <div className="history-date">{session.date}</div>
                 <div className="history-body"><strong>{session.workoutType} day</strong><span>{session.notes || "No notes"}</span></div>
@@ -763,7 +776,7 @@ export default function Home() {
           {navItems.map(({ label, icon: Icon }) => (
             <button key={label} className={`nav-item ${activeNav === label ? "active" : ""}`} onClick={() => { setActiveNav(label); setMenuOpen(false); }}>
               <Icon size={18} /> <span>{label}</span>
-              {label === "Workouts" && <span className="nav-count">{sessionHistory.length}</span>}
+              {label === "Workouts" && <span className="nav-count">{safeHistory.length}</span>}
             </button>
           ))}
         </nav>

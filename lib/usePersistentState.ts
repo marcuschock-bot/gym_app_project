@@ -6,8 +6,32 @@ const readStored = <T,>(key: string, fallback: T): T => {
   }
 
   try {
-    const value = window.localStorage.getItem(key);
-    return value ? (JSON.parse(value) as T) : fallback;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return fallback;
+    }
+    const parsed = JSON.parse(raw);
+    if (parsed === null || parsed === undefined) {
+      return fallback;
+    }
+
+    // Guard array fallbacks: if fallback is an array, stored value must be an array
+    if (Array.isArray(fallback) && !Array.isArray(parsed)) {
+      return fallback;
+    }
+
+    // Guard primitive fallbacks
+    if (typeof fallback === "boolean" && typeof parsed !== "boolean") {
+      return fallback;
+    }
+    if (typeof fallback === "string" && typeof parsed !== "string") {
+      return fallback;
+    }
+    if (typeof fallback === "number" && (typeof parsed !== "number" || !Number.isFinite(parsed))) {
+      return fallback;
+    }
+
+    return parsed as T;
   } catch {
     return fallback;
   }
