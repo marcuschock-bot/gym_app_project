@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -69,6 +69,26 @@ const mapApiWorkout = (session: ApiWorkout): SessionEntry => ({
   }))
 });
 
+const toDateInputValue = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateLabel = (value: string): string => {
+  if (!value) {
+    return "Today";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  }).format(new Date(`${value}T12:00:00`));
+};
+
 function Badge({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "green" | "orange" }) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
 }
@@ -94,6 +114,12 @@ export default function Home() {
   const [statusText, setStatusText] = useState<string>("");
   const [statusTone, setStatusTone] = useState<"ok" | "warn">("ok");
   const [isSaving, setIsSaving] = useState(false);
+  const [calendarDate, setCalendarDate] = useState("");
+  const calendarInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setCalendarDate(toDateInputValue(new Date()));
+  }, []);
 
   useEffect(() => {
     const loadWorkouts = async () => {
@@ -142,6 +168,19 @@ export default function Home() {
       ),
       [query, customExercises]
   );
+
+  const visibleSchedule = useMemo(() => {
+    const anchor = new Date(`${calendarDate || toDateInputValue(new Date())}T12:00:00`);
+    const monday = new Date(anchor);
+    const daysSinceMonday = (anchor.getDay() + 6) % 7;
+    monday.setDate(anchor.getDate() - daysSinceMonday);
+
+    return schedule.map((item, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+      return { ...item, date: String(date.getDate()) };
+    });
+  }, [calendarDate]);
 
   const toggleSet = (id: number) => {
     setSets((current) => current.map((set) => (set.id === id ? { ...set, done: !set.done } : set)));
@@ -292,8 +331,23 @@ export default function Home() {
     <section className="section-block schedule-section">
       <div className="section-heading"><div><p className="eyebrow">Your rhythm</p><h2>This week</h2></div><button className="text-button" onClick={() => setActiveNav("Workouts")}>Open workouts <ChevronRight size={15} /></button></div>
       <div className="schedule-grid">
-        {schedule.map((item) => (
-          <button key={item.day} className={`day-card ${selectedDay === item.title ? "selected" : ""} ${item.color}`} onClick={() => { setSelectedDay(item.title); setActiveNav("Workouts"); }}>
+        {visibleSchedule.map((item) => (
+          <button
+            key={item.day}
+            className={`day-card ${selectedDay === item.title ? "selected" : ""} ${item.color}`}
+            onClick={() => {
+              setSelectedDay(item.title);
+              setCalendarDate(() => {
+                const anchor = new Date(`${calendarDate || toDateInputValue(new Date())}T12:00:00`);
+                const monday = new Date(anchor);
+                monday.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
+                const dayIndex = visibleSchedule.findIndex((day) => day.day === item.day);
+                monday.setDate(monday.getDate() + dayIndex);
+                return toDateInputValue(monday);
+              });
+              setActiveNav("Workouts");
+            }}
+          >
             <span className="day-name">{item.day}</span>
             <span className="date-number">{item.date}</span>
             <span className="day-title">{item.title}</span>
@@ -636,11 +690,41 @@ export default function Home() {
         <header className="topbar">
           <button className="mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open menu"><Menu size={22} /></button>
           <div>
-            <p className="eyebrow">Tuesday, October 15, 2024</p>
+            <p className="eyebrow">{formatDateLabel(calendarDate)}</p>
             <h1>Good morning, Marcus <span className="wave">?</span></h1>
             <p className="workspace-subtitle">Workspace: {activeNav}</p>
           </div>
-          <div className="top-actions"><button className="icon-button"><CalendarDays size={18} /></button><button className="top-avatar">MC</button></div>
+          <div className="top-actions">
+            <button
+              className="icon-button"
+              onClick={() => {
+                const input = calendarInputRef.current;
+                if (!input) return;
+                if (typeof input.showPicker === "function") {
+                  input.showPicker();
+                } else {
+                  input.click();
+                }
+              }}
+              aria-label="Choose calendar date"
+              title="Choose calendar date"
+            >
+              <CalendarDays size={18} />
+            </button>
+            <input
+              ref={calendarInputRef}
+              className="calendar-input"
+              type="date"
+              value={calendarDate}
+              onChange={(event) => {
+                setCalendarDate(event.target.value);
+                setStatusText(`Viewing ${formatDateLabel(event.target.value)}.`);
+                setStatusTone("ok");
+              }}
+              aria-label="Choose calendar date"
+            />
+            <button className="top-avatar">MC</button>
+          </div>
         </header>
 
         {statusText && <div className={`status-banner ${statusTone}`}>{statusText}</div>}
