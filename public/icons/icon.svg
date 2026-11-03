@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="100" fill="#0a0b0f"/>
+  <rect x="30" y="30" width="452" height="452" rx="80" fill="#111318"/>
+  <!-- Sword shape -->
+  <path d="M256 80 L280 300 L256 340 L232 300 Z" fill="#4FC3F7" opacity="0.9"/>
+  <path d="M220 280 L292 280 L286 310 L226 310 Z" fill="#4FC3F7"/>
+  <path d="M230 310 L282 310 L278 340 L234 340 Z" fill="#0288D1"/>
+  <!-- Cross guard -->
+  <path d="M196 270 L316 270 L316 284 L196 284 Z" fill="#4FC3F7" opacity="0.8"/>
+  <!-- Glow dots -->
+  <circle cx="256" cy="140" r="6" fill="#00E5FF" opacity="0.8"/>
+  <circle cx="256" cy="200" r="4" fill="#4FC3F7" opacity="0.6"/>
+</svg>
