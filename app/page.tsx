@@ -49,6 +49,10 @@ type ApiWorkout = {
 
 type Account = { name: string; email: string; password: string };
 type RemoteFood = FoodLogEntry & { id: string };
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
 
 // ─── XP / Rank System ───────────────────────────────────────────────────────
 
@@ -130,6 +134,16 @@ const formatDateLabel = (value: string): string => {
   }).format(new Date(`${value}T12:00:00`));
 };
 
+const MOTIVATION_QUOTES = [
+  { quote: "Discipline is choosing between what you want now and what you want most.", author: "Abraham Lincoln" },
+  { quote: "You do not rise to the level of your goals. You fall to the level of your systems.", author: "James Clear" },
+  { quote: "The work is the shortcut.", author: "Unknown" },
+  { quote: "Small progress is still progress. Keep moving.", author: "Shadow Forge" },
+  { quote: "The only bad workout is the one that did not happen.", author: "Unknown" },
+  { quote: "Earn your confidence one rep at a time.", author: "Shadow Forge" },
+  { quote: "Consistency compounds. Show up again today.", author: "Shadow Forge" }
+];
+
 // ─── Small UI helpers ─────────────────────────────────────────────────────────
 
 function RankBadge({ rank }: { rank: Rank }) {
@@ -199,11 +213,26 @@ export default function Home() {
   const [authName, setAuthName] = useState("");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
 
   // ─── Effects ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
     setCalendarDate(toDateInputValue(new Date()));
+  }, []);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js");
+    }
+
+    const handleInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
   }, []);
 
   useEffect(() => {
@@ -277,8 +306,9 @@ export default function Home() {
   );
 
   const totalSessionsCount = safeHistory.length;
-  const totalVolumeAll = safeHistory.reduce((sum, s) => sum + s.volume, 0);
   const streakCount = Math.min(totalSessionsCount, 12);
+  const completedHistorySets = safeHistory.reduce((sum, session) => sum + session.completedSets, 0);
+  const dailyQuote = MOTIVATION_QUOTES[new Date().getDate() % MOTIVATION_QUOTES.length];
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
@@ -380,6 +410,22 @@ export default function Home() {
     }
     addMeal({ id: "", name: foodQuery.trim(), serving: "1 serving", servings: 1, calories, protein: 0, carbs: 0, fats: 0 });
     setCustomFoodCalories("");
+  };
+
+  const installApp = async () => {
+    if (!installPrompt) {
+      setStatusText("On your phone, open the browser menu and choose Add to Home Screen.");
+      setStatusTone("ok");
+      return;
+    }
+
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === "accepted") {
+      setStatusText("Shadow Forge added to your home screen.");
+      setStatusTone("ok");
+    }
+    setInstallPrompt(null);
   };
 
   const submitAuth = () => {
@@ -674,7 +720,6 @@ export default function Home() {
                 {session.completedSets}/{session.totalSets} sets · {session.focus}
               </span>
             </div>
-            <div className="history-vol">{session.volume.toLocaleString()} kg</div>
             <div className="history-actions">
               <button
                 className="sl-btn-ghost"
@@ -756,6 +801,15 @@ export default function Home() {
             }}
           >
             {rankInfo.rank}
+          </div>
+        </div>
+
+        <div className="motivation-card mb-16">
+          <div className="motivation-icon"><Zap size={17} /></div>
+          <div>
+            <p className="sec-label" style={{ marginBottom: 5 }}>Daily Motivation</p>
+            <p className="motivation-quote">&ldquo;{dailyQuote.quote}&rdquo;</p>
+            <p className="motivation-author">— {dailyQuote.author}</p>
           </div>
         </div>
 
@@ -849,13 +903,13 @@ export default function Home() {
           </div>
           <div className="stat-card">
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-              <Zap size={14} style={{ color: "#FFD600" }} />
-              <span className="stat-label">Volume</span>
+              <Check size={14} style={{ color: "var(--success)" }} />
+              <span className="stat-label">Sets Done</span>
             </div>
             <span className="stat-value" style={{ fontSize: 16 }}>
-              {(totalVolumeAll / 1000).toFixed(1)}k
+              {completedHistorySets}
             </span>
-            <span style={{ fontSize: 9, color: "var(--muted)" }}>kg lifted</span>
+            <span style={{ fontSize: 9, color: "var(--muted)" }}>all time</span>
           </div>
         </div>
 
@@ -981,10 +1035,9 @@ export default function Home() {
             <span className="stat-value">{totalSessionsCount}</span>
           </div>
           <div className="stat-card">
-            <span className="stat-label">Volume</span>
-            <span className="stat-value" style={{ fontSize: 16 }}>
-              {(totalVolumeAll / 1000).toFixed(1)}k
-            </span>
+            <span className="stat-label">Sets Completed</span>
+            <span className="stat-value">{completedHistorySets}</span>
+            <span style={{ fontSize: 9, color: "var(--muted)" }}>all time</span>
           </div>
         </div>
 
@@ -1254,6 +1307,19 @@ export default function Home() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="sl-card mb-16" style={{ padding: 16 }}>
+        <p className="sec-label" style={{ marginBottom: 5 }}>Mobile App</p>
+        <p style={{ fontSize: 13, color: "var(--text)", marginBottom: 5 }}>
+          Train from your phone like a real app.
+        </p>
+        <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 12 }}>
+          Install Shadow Forge to your home screen for a full-screen, app-like experience.
+        </p>
+        <button className="sl-btn-primary" onClick={() => void installApp()} style={{ width: "100%", fontSize: 12 }}>
+          <Zap size={14} /> {installPrompt ? "Install Shadow Forge" : "How to install"}
+        </button>
       </div>
 
       {/* XP breakdown */}

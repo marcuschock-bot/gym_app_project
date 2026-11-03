@@ -165,6 +165,40 @@ p, h1, h2, h3, h4 { margin: 0; }
   pointer-events: none;
 }
 
+.motivation-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(79,195,247,0.18);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(79,195,247,0.08), rgba(10,11,15,0.2));
+}
+
+.motivation-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 9px;
+  color: var(--primary);
+  background: var(--primary-dim);
+}
+
+.motivation-quote {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+
+.motivation-author {
+  font-size: 10px;
+  color: var(--muted);
+  margin: 0;
+}
+
 .cal-btn {
   height: 36px;
   width: 36px;
@@ -652,13 +686,6 @@ p, h1, h2, h3, h4 { margin: 0; }
 .history-body { display: flex; flex-direction: column; gap: 3px; }
 .history-body strong { font-size: 12px; font-weight: 600; color: var(--text); }
 .history-body span { font-size: 10px; color: var(--muted); }
-
-.history-vol {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--primary);
-  font-weight: 500;
-}
 
 .history-actions {
   display: flex;
